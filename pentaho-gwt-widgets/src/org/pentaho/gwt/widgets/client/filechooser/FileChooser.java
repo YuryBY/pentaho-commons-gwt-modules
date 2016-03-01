@@ -206,7 +206,6 @@ public class FileChooser extends VerticalPanel {
   }
 
   public void initUI() {
-
     if ( mode == FileChooserMode.OPEN_READ_ONLY ) {
       fileNameTextBox.setReadOnly( true );
     }
@@ -366,8 +365,9 @@ public class FileChooser extends VerticalPanel {
     filesListTable.setWidget( 0, 1, typeLabel );
     filesListTable.setWidget( 0, 2, dateLabel );
 
-    List<TreeItem> treeItems = new ArrayList<TreeItem>();
-    for ( int i = 0; i < parentTreeItem.getChildCount(); i++ ) {
+    int childItemsCount = parentTreeItem.getChildCount();
+    List<TreeItem> treeItems = new ArrayList<TreeItem>(childItemsCount);
+    for ( int i = 0; i < childItemsCount; i++ ) {
       treeItems.add( parentTreeItem.getChild( i ) );
     }
     Collections.sort( treeItems, new TreeItemComparator() ); // BISERVER-9599 - custom sort
@@ -376,16 +376,11 @@ public class FileChooser extends VerticalPanel {
     for ( final TreeItem childItem : treeItems ) {
       RepositoryFileTree repositoryFileTree = (RepositoryFileTree) childItem.getUserObject();
       RepositoryFile repositoryFile = repositoryFileTree.getFile();
-      if ( repositoryFile.isFolder()
-          && !( repositoryFile.getName() != null && repositoryFile.getName().equals( ETC_FOLDER ) ) ) {
-        addFileToList( repositoryFileTree, childItem, filesListTable, row++ );
-      }
-    }
-    for ( final TreeItem childItem : treeItems ) {
-      RepositoryFileTree repositoryFileTree = (RepositoryFileTree) childItem.getUserObject();
-      RepositoryFile repositoryFile = repositoryFileTree.getFile();
-      if ( !repositoryFile.isFolder() ) {
-        addFileToList( repositoryFileTree, childItem, filesListTable, row++ );
+      boolean isFolder = repositoryFile.isFolder();
+      if ( isFolder ) {
+        addFileToList( repositoryFile, childItem, filesListTable, row++, true );
+      } else {
+        addFileToList( repositoryFile, childItem, filesListTable, row++, false );
       }
     }
     filesListTable.setWidth( "100%" ); //$NON-NLS-1$
@@ -395,31 +390,28 @@ public class FileChooser extends VerticalPanel {
     return filesListPanel;
   }
 
-  private void addFileToList( final RepositoryFileTree repositoryFileTree, final TreeItem item,
-      final FlexTable filesListTable, int row ) {
+  private void addFileToList( final RepositoryFile repositoryFile, final TreeItem item,
+      final FlexTable filesListTable, int row, final boolean isFolder ) {
+    // Do not add "etc" folder
+    String fileName = repositoryFile.getName();
+    if ( isFolder && fileName == null && fileName.equals( ETC_FOLDER )) {
+      return;
+    }
     Label myDateLabel = null;
-    RepositoryFile file = repositoryFileTree.getFile();
-    Date lastModDate = file.getLastModifiedDate();
-    String fileName = file.getName();
-
-    final Boolean isDir = file.isFolder();
-    if ( lastModDate != null ) {
+    Date lastModDate = repositoryFile.getLastModifiedDate();
+    boolean lastModDateIsNull = ( lastModDate != null ) ? false : true;
+    if ( !lastModDateIsNull ) {
       myDateLabel = new Label( dateFormat.format( lastModDate ), false );
     }
-
-    String finalFileName;
-    if ( showLocalizedFileNames ) {
-      finalFileName = file.getTitle();
-    } else {
-      finalFileName = fileName;
-    }
+    String finalFileName =
+        showLocalizedFileNames ? repositoryFile.getTitle() : fileName;
 
     final Label myNameLabel = new Label( finalFileName, false ) {
       public void onBrowserEvent( Event event ) {
         switch ( event.getTypeInt() ) {
           case Event.ONCLICK:
           case Event.ONDBLCLICK:
-            handleFileClicked( item, isDir, event, this.getElement() );
+            handleFileClicked( item, isFolder, event, this.getElement() );
             break;
           case Event.ONMOUSEOVER:
             this.addStyleDependentName( "over" ); //$NON-NLS-1$
@@ -431,25 +423,24 @@ public class FileChooser extends VerticalPanel {
       }
     };
     // biserver-2719: concatenate the name with fileChooser_ so the ids are unique in Mantle
-    myNameLabel.getElement().setAttribute( "id", "fileChooser_".concat( file.getId() ) ); //$NON-NLS-1$ //$NON-NLS-2$
+    myNameLabel.getElement().setAttribute( "id", "fileChooser_".concat( repositoryFile.getId() ) ); //$NON-NLS-1$ //$NON-NLS-2$
     myNameLabel.sinkEvents( Event.ONDBLCLICK | Event.ONCLICK );
     myNameLabel.sinkEvents( Event.ONMOUSEOVER | Event.ONMOUSEOUT );
-    myNameLabel.setTitle( file.getTitle() );
+    myNameLabel.setTitle( repositoryFile.getTitle() );
     myNameLabel.setStyleName( "fileChooserCellLabel" ); //$NON-NLS-1$
     HorizontalPanel fileNamePanel = new HorizontalPanel();
     Image fileImage = new Image() {
       public void onBrowserEvent( Event event ) {
-        handleFileClicked( item, isDir, event, myNameLabel.getElement() );
+        handleFileClicked( item, isFolder, event, myNameLabel.getElement() );
       }
     };
     fileImage.setUrl( GWT.getModuleBaseURL() + "images/spacer.gif" );
     fileImage.addStyleName( "icon-small" );
     fileImage.addStyleName( "clickable" );
     fileImage.sinkEvents( Event.ONDBLCLICK | Event.ONCLICK );
-    if ( isDir ) {
+    if ( isFolder ) {
       fileImage.addStyleName( "icon-folder" );
     } else {
-
       if ( fileName.endsWith( "waqr.xaction" ) ) { //$NON-NLS-1$
         fileImage.addStyleName( "icon-waqr-report" );
       } else if ( fileName.endsWith( "analysisview.xaction" ) ) { //$NON-NLS-1$
@@ -474,22 +465,22 @@ public class FileChooser extends VerticalPanel {
 
     Label typeLabel =
         new Label(
-            isDir
+            isFolder
                 ? FileChooserEntryPoint.messages.getString( "folder" ) : FileChooserEntryPoint.messages.getString( "file" ), false ); //$NON-NLS-1$ //$NON-NLS-2$
 
     ElementUtils.preventTextSelection( myNameLabel.getElement() );
     ElementUtils.preventTextSelection( typeLabel.getElement() );
-    if ( myDateLabel != null ) {
+    if ( !lastModDateIsNull ) {
       ElementUtils.preventTextSelection( myDateLabel.getElement() );
     }
     fileNamePanel.setStyleName( "fileChooserCell" ); //$NON-NLS-1$
     typeLabel.setStyleName( "fileChooserCell" ); //$NON-NLS-1$
-    if ( myDateLabel != null ) {
+    if ( !lastModDateIsNull ) {
       myDateLabel.setStyleName( "fileChooserCell" ); //$NON-NLS-1$
     }
     filesListTable.setWidget( row + 1, 0, fileNamePanel );
     filesListTable.setWidget( row + 1, 1, typeLabel );
-    if ( myDateLabel != null ) {
+    if ( !lastModDateIsNull ) {
       filesListTable.setWidget( row + 1, 2, myDateLabel );
     }
   }
@@ -637,9 +628,7 @@ public class FileChooser extends VerticalPanel {
 
   /**
    * Get the names of all files in the given path.
-   * 
-   * @param path
-   *          Path to query for files
+   *
    * @return List of file names in the given path.
    */
   public List<String> getFilesInPath( final RepositoryFileTree fileTreeItem ) {
@@ -677,12 +666,10 @@ public class FileChooser extends VerticalPanel {
   }
 
   public FileFilter getFileFilter() {
-
     return fileFilter;
   }
 
   public void setFileFilter( FileFilter fileFilter ) {
-
     this.fileFilter = fileFilter;
 
     repositoryTree = TreeBuilder.buildSolutionTree( fileTree, showHiddenFiles, showLocalizedFileNames, fileFilter );
@@ -722,7 +709,7 @@ public class FileChooser extends VerticalPanel {
 
   /**
    * Safari Mobile behaves differently than browsers on a computer. These rules may extend to other mobile browsers.
-   * 
+   *
    * @return
    */
   public native boolean isMobileSafari()/*-{
