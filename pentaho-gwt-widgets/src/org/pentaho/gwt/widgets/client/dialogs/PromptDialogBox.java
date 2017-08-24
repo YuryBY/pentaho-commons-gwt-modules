@@ -207,7 +207,7 @@ public class PromptDialogBox extends DialogBox {
   @Override
   public void center() {
     super.center();
-    if ( isIEBrowser() ) {
+    if ( this.getClass().equals( PromptDialogBox.class ) && isIEBrowser() ) {
       this.getElement().getStyle().setZIndex( Integer.MAX_VALUE );
       final FocusPanel background = getPageBackground();
       if ( background != null ) {
